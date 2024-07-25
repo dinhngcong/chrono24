@@ -35,7 +35,8 @@ class Chrono24Crawler(Database):
             response = requests.get("https://api.myip.com/", headers=header, proxies=proxy)
             return response.content
         except requests.exceptions.RequestException as err:
-            return err.response.json()
+            logger.error(f'Can not get IP infomation from proxy: {err}')
+            return False
 
     def send_request(self, path_url, headers={}, proxy=False):
         url = f'{pattern.BASE_URL}{path_url}'
@@ -50,6 +51,8 @@ class Chrono24Crawler(Database):
             'https': proxy,
         }
         ip = self.get_ip(headers, proxy)
+        if not ip:
+            ip = 'No info'
         logger.info(f'Send Request:\n- URL: {url}\n- Header: {header}\n- Proxy: {proxy}\n- IP info: {ip}')
         try:
             response = requests.get(url, headers=header, proxies=proxy)
@@ -206,4 +209,4 @@ chrono_worker = Chrono24Crawler()
 """Lấy thông tin sản phẩm cần crawl về hệ thống"""
 # chrono_worker.get_all_products_link()
 """Crawl chi tiết thông tin sản phẩm"""
-chrono_worker.get_details_products_list()
+# chrono_worker.get_details_products_list()
