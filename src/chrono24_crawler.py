@@ -237,8 +237,10 @@ class Chrono24Crawler(Database):
                 partner_product_id = link_data[2].split('--id')[1][:-4]
             else:
                 partner_product_id = link_data[1]
+            detail_data = False
             detail_tree = self.send_request('/search/detail.htm?id=%s&originalNotes' % partner_product_id, headers, proxies)
-            detail_data = detail_tree.xpath('//notes')[0].text_content().strip()
+            if detail_tree:
+                detail_data = detail_tree.xpath('//notes')[0].text_content().strip()
             if not detail_data or detail_data == '':
                 detail_data = self.send_request('/search/detail.htm?id=%s&originalNotes' % partner_product_id, headers, proxies, get_mode='text')
             # ======================================================================================= End of Detail Data
