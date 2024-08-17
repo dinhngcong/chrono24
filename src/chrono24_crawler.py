@@ -209,6 +209,11 @@ class Chrono24Crawler(Database):
 
             # ================================================================================================ Meta data
             seq_fields = ['name', 'description', 'price']
+            if not tree.xpath(pattern.XPATH_PRODUCT_DETAIL_NAME):
+                sql = f"UPDATE w_product SET name = 'skip', error_log = 'Product link not available' WHERE id = {int(link_data[0])};"
+                self.cur.execute(sql)
+                self.conn.commit()
+                return
             product_data = {
                 'name': tree.xpath(pattern.XPATH_PRODUCT_DETAIL_NAME)[0].text_content().strip().split("\n")[0] or None,
                 'description': tree.xpath(pattern.XPATH_PRODUCT_DETAIL_MORE)[0].text_content().strip() or None,
@@ -256,19 +261,6 @@ class Chrono24Crawler(Database):
             self.conn.commit()
             return err.response.json()
 
-
-    def get_details_products_list(self, headers={}, proxies=False):
-        logger.info('\nStarting get detail products list on Chrono24')
-        sql = """SELECT id, partner_product_id, slug FROM w_product WHERE name IS NULL LIMIT 1;"""
-        self.cur.execute(sql)
-        links = self.cur.fetchall()
-        total_products = 0
-        for link in links:
-            self.get_details_product_by_link(link)
-            total_products += 1
-        self.end_db_connection()
-        logger.info(f'Get get detail products list on Chrono24 successfuly. Total {total_products} brands.')
-
     def _get_detail_product(self, product_id):
         try:
             detail_data = self.send_request('/search/detail.htm?id=%s&originalNotes' % product_id, get_mode='text')
@@ -310,3 +302,13 @@ chrono_worker = Chrono24Crawler()
 # chrono_worker._get_metadata()
 # chrono_worker._get_detail_product(34006556)
 chrono_worker.get_details_products_list()
+
+# /rolex/rolex-in-stock-2022-daytona-white-panda-dial-116500ln-oyster-bracelet--id35370091.htm
+# /rolex/datejust-36-126234-mint-green-dial--id34017343.htm
+# /rolex/rolex-in-stock-2022-daytona-black-dial-116500ln-oyster-bracelet--id35339960.htm
+# /rolex/rolex-rolex-yacht-master-16622-platinum-bezel-and-dial-oyster-bracelet-40mm-2000--id34846355.htm
+# chrono_worker.get_details_product_by_link([
+#     0,
+#     None,
+#     '/rolex/rolex-in-stock-2022-daytona-white-panda-dial-116500ln-oyster-bracelet--id35370091.htm'
+# ])
