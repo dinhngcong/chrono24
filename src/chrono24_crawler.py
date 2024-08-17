@@ -134,13 +134,14 @@ class Chrono24Crawler(Database):
                 tree = self.send_request(handle_url, headers, proxies)
                 if not tree:
                     logger.error('Failed to get data products link by brand')
-                    return
+                    return 0
             except requests.exceptions.RequestException as err:
                 logger.error(err.response.json())
                 if try_count > 3:
                     logger.info('Not have more data need crawl.')
+                    logger.info(err.response.json())
                     is_more = False
-                    return err.response.json()
+                    return 0
                 else:
                     try_count += 1
                     logger.warning('Try crawl more data!')
@@ -207,6 +208,6 @@ chrono_worker = Chrono24Crawler()
 """Lấy thông tin Brand về hệ thống"""
 # chrono_worker.crawl_brands()
 """Lấy thông tin sản phẩm cần crawl về hệ thống"""
-# chrono_worker.get_all_products_link()
+chrono_worker.get_all_products_link()
 """Crawl chi tiết thông tin sản phẩm"""
 # chrono_worker.get_details_products_list()
