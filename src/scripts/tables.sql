@@ -8,6 +8,7 @@ CREATE TABLE w_brand(
 
 CREATE TABLE w_product(
     id SERIAL,
+    partner_product_id int4 NOT NULL,
     slug VARCHAR NOT NULL,
     name VARCHAR,
     description VARCHAR,
@@ -37,6 +38,18 @@ CREATE TABLE w_product(
     bracelet_color VARCHAR,
     clasp VARCHAR,
     clasp_material VARCHAR,
+    base_caliber VARCHAR,
+    dial_numerals VARCHAR,
+    most_recent_servicing VARCHAR,
+    dealer_product_code VARCHAR,
+    thickness VARCHAR,
+    lug_width VARCHAR,
+    frequency VARCHAR,
+    bracelet_length VARCHAR,
+    bracelet_thickness VARCHAR,
+    buckle_width VARCHAR,
     w_date timestamp,
-    other VARCHAR
+    other VARCHAR,
+    detail TEXT,
+    error_log TEXT
 );

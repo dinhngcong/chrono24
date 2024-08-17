@@ -38,7 +38,7 @@ class Chrono24Crawler(Database):
             logger.error(f'Can not get IP infomation from proxy: {err}')
             return False
 
-    def send_request(self, path_url, headers={}, proxy=False):
+    def send_request(self, path_url, headers={}, proxy=False, get_mode='content'):
         url = f'{pattern.BASE_URL}{path_url}'
         header = {
             # 'User-Agent': USER_AGENT[randrange(len(USER_AGENT) - 1)]
@@ -57,8 +57,11 @@ class Chrono24Crawler(Database):
         try:
             response = requests.get(url, headers=header, proxies=proxy)
             if response.status_code == 200:
-                print(response.content)
-                tree = html.fromstring(response.content)
+                # print(response.content)
+                if get_mode == 'content':
+                    tree = html.fromstring(response.content)
+                else:
+                    tree = response.text
                 logger.info('Send request successfully')
                 return tree
             else:
@@ -119,6 +122,7 @@ class Chrono24Crawler(Database):
         for brand in brands:
             total_product = self.handle_product_list_by_brand(brand)
             total_products += total_product
+        self.end_db_connection()
         logger.info(f'Get all products link on Chrono24 successfuly. Total {total_products} brands.')
 
     def handle_product_list_by_brand(self, brand, headers={}, proxies=False):
@@ -150,16 +154,19 @@ class Chrono24Crawler(Database):
             for product_el in product_els:
                 a_el = product_el.xpath(".//a")[0]
                 slug = a_el.get('href')
+                partner_product_id = slug.split('--id')[1][:-4]
+
                 check_exists = """SELECT id FROM w_product WHERE slug = '%s' LIMIT 1;""" % slug
                 self.cur.execute(check_exists)
                 product_exists = self.cur.fetchone()
                 if product_exists:
                     continue
+
                 sql = """
-                    INSERT INTO w_product (slug, manufacturer_id, manufacturer)
-                    VALUES (%s, %s, %s)
+                    INSERT INTO w_product (partner_product_id, slug, manufacturer_id, manufacturer)
+                    VALUES (%s, %s, %s, %s)
                 """
-                self.cur.execute(sql, (a_el.get('href'), brand[0], brand[1]))
+                self.cur.execute(sql, (partner_product_id, slug, brand[0], brand[1]))
                 total_crawl += 1
 
             active_pages = tree.xpath(pattern.XPATH_ACTIVE_PAGE)
@@ -183,31 +190,123 @@ class Chrono24Crawler(Database):
 
     def get_details_products_list(self, headers={}, proxies=False):
         logger.info('\nStarting get detail products list on Chrono24')
-        sql = """SELECT id, slug FROM w_product WHERE name IS NULL LIMIT 1;"""
+        sql = """SELECT id, partner_product_id, slug FROM w_product WHERE name IS NULL;"""
         self.cur.execute(sql)
         links = self.cur.fetchall()
         total_products = 0
         for link in links:
             self.get_details_product_by_link(link)
             total_products += 1
+        self.end_db_connection()
         logger.info(f'Get get detail products list on Chrono24 successfuly. Total {total_products} brands.')
 
     def get_details_product_by_link(self, link_data, headers={}, proxies=False):
         try:
-            tree = self.send_request(link_data[1], headers, proxies)
+            tree = self.send_request(link_data[2], headers, proxies)
             if not tree:
                 logger.error('Failed to get detail product by link')
                 return
+
+            # ================================================================================================ Meta data
+            seq_fields = ['name', 'description', 'price']
+            product_data = {
+                'name': tree.xpath(pattern.XPATH_PRODUCT_DETAIL_NAME)[0].text_content().strip().split("\n")[0] or None,
+                'description': tree.xpath(pattern.XPATH_PRODUCT_DETAIL_MORE)[0].text_content().strip() or None,
+                'price': tree.xpath(pattern.XPATH_PRODUCT_DETAIL_PRICE)[0].text_content().strip() or None,
+            }
+            contents = tree.xpath(pattern.XPATH_PRODUCT_DETAIL_META_DATA)
+            meta_datas = contents[0]
+            basic_data_pattern = pattern.XPATH_PRODUCT_DETAIL_BASIC_DATA_PATTERN
+
+            for k, v in pattern.LIST_BASIC_DATA.items():
+                seq_fields.append(k)
+                basic_data = meta_datas.xpath(basic_data_pattern % v)
+                if len(basic_data) > 1:
+                    product_data[k] = basic_data[1].text_content().strip() or None
+                else:
+                    product_data[k] = None
+            # ========================================================================================= End of Meta data
+
+            # ============================================================================================== Detail Data
+            if not link_data[1]:
+                partner_product_id = link_data[2].split('--id')[1][:-4]
+            else:
+                partner_product_id = link_data[1]
+            detail_tree = self.send_request('/search/detail.htm?id=%s&originalNotes' % partner_product_id, headers, proxies)
+            detail_data = detail_tree.xpath('//notes')[0].text_content().strip()
+            if not detail_data or detail_data == '':
+                detail_data = self.send_request('/search/detail.htm?id=%s&originalNotes' % partner_product_id, headers, proxies, get_mode='text')
+            # ======================================================================================= End of Detail Data
+
+            # =================================================================================================== Update
+            fields_name = ''
+            fields_value = [partner_product_id, detail_data]
+            for field in seq_fields:
+                fields_name += f', {field} = %s'
+                fields_value.append(product_data[field])
+            fields_value.append(link_data[0]) # ID của product để update
+            sql = f'UPDATE w_product SET partner_product_id = %s, detail = %s, {fields_name[2:]} WHERE id = %s;'
+            self.cur.execute(sql, fields_value)
+            self.conn.commit()
+            # ============================================================================================ End of Update
+        except requests.exceptions.RequestException as err:
+            logger.error(err.response.json())
+            sql = """UPDATE w_product SET error_log = %s WHERE id = %s;"""
+            self.cur.execute(sql, (err.response.json(), int(link_data[0])))
+            self.conn.commit()
+            return err.response.json()
+
+
+    def get_details_products_list(self, headers={}, proxies=False):
+        logger.info('\nStarting get detail products list on Chrono24')
+        sql = """SELECT id, partner_product_id, slug FROM w_product WHERE name IS NULL LIMIT 1;"""
+        self.cur.execute(sql)
+        links = self.cur.fetchall()
+        total_products = 0
+        for link in links:
+            self.get_details_product_by_link(link)
+            total_products += 1
+        self.end_db_connection()
+        logger.info(f'Get get detail products list on Chrono24 successfuly. Total {total_products} brands.')
+
+    def _get_detail_product(self, product_id):
+        try:
+            detail_data = self.send_request('/search/detail.htm?id=%s&originalNotes' % product_id, get_mode='text')
+            print(detail_data)
         except requests.exceptions.RequestException as err:
             logger.error(err.response.json())
             return err.response.json()
 
+    # Hàm lấy các meta fields
+    def _get_metadata(self, headers={}, proxies=False):
+        metadata = {}
+        sql = """SELECT id, slug FROM w_product;"""
+        self.cur.execute(sql)
+        links = self.cur.fetchall()
+        total_products = 0
+        for link in links:
+            tree = self.send_request(link[1], headers, proxies)
+            if not tree:
+                logger.error('Failed to get detail product by link')
+                return
+
+            contents = tree.xpath(pattern.XPATH_PRODUCT_DETAIL_META_DATA)
+            meta_datas = contents[0]
+            for label_origin in meta_datas.xpath(".//tr//strong"):
+                label_value = label_origin.text_content().strip()
+                label_key = label_value.lower().replace(' ', '_').replace('_', '_').replace('/', '_').replace(
+                    '|', '_').replace('~', '_').replace('\\', '_')
+                metadata[label_key] = label_value
+        print(metadata)
+        logger.info(f'Get get detail products list on Chrono24 successfuly. Total {total_products} brands.')
 
 """Khởi tạo"""
 chrono_worker = Chrono24Crawler()
 """Lấy thông tin Brand về hệ thống"""
 # chrono_worker.crawl_brands()
 """Lấy thông tin sản phẩm cần crawl về hệ thống"""
-chrono_worker.get_all_products_link()
+# chrono_worker.get_all_products_link()
 """Crawl chi tiết thông tin sản phẩm"""
-# chrono_worker.get_details_products_list()
+# chrono_worker._get_metadata()
+# chrono_worker._get_detail_product(34006556)
+chrono_worker.get_details_products_list()
