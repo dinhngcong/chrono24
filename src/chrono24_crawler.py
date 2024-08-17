@@ -214,11 +214,17 @@ class Chrono24Crawler(Database):
                 self.cur.execute(sql)
                 self.conn.commit()
                 return
+
             product_data = {
-                'name': tree.xpath(pattern.XPATH_PRODUCT_DETAIL_NAME)[0].text_content().strip().split("\n")[0] or None,
-                'description': tree.xpath(pattern.XPATH_PRODUCT_DETAIL_MORE)[0].text_content().strip() or None,
-                'price': tree.xpath(pattern.XPATH_PRODUCT_DETAIL_PRICE)[0].text_content().strip() or None,
+                'name': tree.xpath(pattern.XPATH_PRODUCT_DETAIL_NAME)[0].text_content().strip().split("\n")[0] or None
             }
+
+            description = tree.xpath(pattern.XPATH_PRODUCT_DETAIL_MORE)
+            if description:
+                product_data['description'] = description[0].text_content().strip() or None
+            price = tree.xpath(pattern.XPATH_PRODUCT_DETAIL_PRICE)
+            if price:
+                product_data['price'] = price[0].text_content().strip() or None
             contents = tree.xpath(pattern.XPATH_PRODUCT_DETAIL_META_DATA)
             meta_datas = contents[0]
             basic_data_pattern = pattern.XPATH_PRODUCT_DETAIL_BASIC_DATA_PATTERN
