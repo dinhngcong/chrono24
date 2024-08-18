@@ -216,7 +216,9 @@ class Chrono24Crawler(Database):
                 return
 
             product_data = {
-                'name': tree.xpath(pattern.XPATH_PRODUCT_DETAIL_NAME)[0].text_content().strip().split("\n")[0] or None
+                'name': tree.xpath(pattern.XPATH_PRODUCT_DETAIL_NAME)[0].text_content().strip().split("\n")[0] or None,
+                'description': tree.xpath(pattern.XPATH_PRODUCT_DETAIL_NAME)[0].text_content().strip().split("\n")[0] or None,
+                'price': '',
             }
 
             description = tree.xpath(pattern.XPATH_PRODUCT_DETAIL_MORE)
